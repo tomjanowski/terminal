@@ -12,9 +12,10 @@
 #include <fcntl.h>
 using namespace std;
 const int LEN=256*256;
+int fd;
 int main(int argc, char ** argv) try {
   char buffer[LEN];
-  int fd=socket(AF_INET,SOCK_STREAM,0);
+  fd=socket(AF_INET,SOCK_STREAM,0);
   sockaddr_in addr;
   addr.sin_family=AF_INET;
   addr.sin_port=htons(2345);
@@ -50,16 +51,15 @@ int main(int argc, char ** argv) try {
     }
   pollfd fds[2];
   fds[0].fd=master;
-  fds[0].events=POLLIN;
+  fds[0].events=POLLIN|POLLHUP|POLLERR;
   fds[1].fd=fd;
-  fds[1].events=POLLIN;
+  fds[1].events=POLLIN|POLLHUP|POLLERR;
   int rec=0;
   for (;;) {
     rec=poll(fds,2,-1);
-    cout << "poll rec " << rec << "  " << fds[0].revents << " " << fds[1].revents <<  endl;
     for (int i=0;i<2;++i) {
       if ((fds[i].revents&POLLHUP)!=0) {
-        cout << "Received POLLHUP" << endl;
+        cout << "Received POLLHUP on " << i << endl;
         exit(0);
         }
       if ((fds[i].revents&POLLIN)!=0) {
@@ -72,10 +72,14 @@ int main(int argc, char ** argv) try {
           perror("write");
           throw "write";
           }
+        if (i==1) {
+          for (int j=0;j<rec;++j) cout << hex << (int)buffer[j] << " " << flush;
+          }
         }
       }
     }
 //send(fd,"aaaa",4,0);
   } catch (const char * x) {
   cout << x << endl;
+  shutdown(fd,SHUT_RDWR);
   }

@@ -25,23 +25,34 @@ int main(int argc, char ** argv) try {
     }
   listen(fd1,1);
   int fd=accept(fd1,reinterpret_cast<sockaddr*>(&addr),&addr_len);
+  if (fd<0) {
+    perror("accept");
+    throw "accept";
+    }
   pollfd fds[2];
   fds[0].fd=0;
-  fds[0].events=POLLIN;
+  fds[0].events=POLLIN|POLLHUP|POLLERR;
   fds[1].fd=fd;
-  fds[1].events=POLLIN;
+  fds[1].events=POLLIN|POLLHUP|POLLERR;
   int rec=0;
   tcgetattr(0,&oldterm);
   cfmakeraw(&term);
   tcsetattr(0,TCSANOW,&term);
   for (;;) {
-    poll(fds,2,-1);
+    if (poll(fds,2,-1)<0) {
+      perror("poll");
+      throw "poll";
+      }
+//  cout << "out of poll " << fds[0].revents << " " << fds[1].revents << endl;
     for (int i=0;i<2;++i) {
       if ((fds[i].revents&POLLHUP)!=0) {
         throw "POLLHUP";
         }
+      if ((fds[i].revents&POLLERR)!=0) {
+        throw "POLLERR";
+        }
       if ((fds[i].revents&POLLIN)!=0) {
-        if ((rec=read(fds[i].fd,buffer,LEN))<0) {
+        if ((rec=read(fds[i].fd,buffer,LEN))<=0) {
           perror("recv");
           throw "recv";
           }
@@ -51,6 +62,6 @@ int main(int argc, char ** argv) try {
     }
 //send(fd,"aaaa",4,0);
   } catch (const char * x) {
-  cout << x << endl;
   tcsetattr(0,TCSANOW,&oldterm);
+  cout << "\r" << x << endl;
   }
