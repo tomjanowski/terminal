@@ -8,10 +8,16 @@
 #include <poll.h>
 #include <unistd.h>
 #include <termios.h>
+#include <sys/ioctl.h>
+#include <sstream>
+#include <signal.h>
 using namespace std;
 const int LEN=256*256;
 termios term,oldterm;
+void window_size(int);
+int fd;
 int main(int argc, char ** argv) try {
+  signal(SIGWINCH,window_size);
   char buffer[LEN];
   int fd1=socket(AF_INET,SOCK_STREAM,0);
   sockaddr_in addr;
@@ -24,7 +30,7 @@ int main(int argc, char ** argv) try {
     throw "bind";
     }
   listen(fd1,1);
-  int fd=accept(fd1,reinterpret_cast<sockaddr*>(&addr),&addr_len);
+  fd=accept(fd1,reinterpret_cast<sockaddr*>(&addr),&addr_len);
   if (fd<0) {
     perror("accept");
     throw "accept";
@@ -38,8 +44,14 @@ int main(int argc, char ** argv) try {
   tcgetattr(0,&oldterm);
   cfmakeraw(&term);
   tcsetattr(0,TCSANOW,&term);
+  winsize wins={0,0};
+  ioctl(0,TIOCGWINSZ,&wins);
+  ostringstream xx;
+  xx << "\r~size " << wins.ws_col << " " << wins.ws_row << "~" << endl;
+  write(fd,xx.str().c_str(),xx.str().size());
   for (;;) {
-    if (poll(fds,2,-1)<0) {
+    if ((rec=poll(fds,2,-1))<0) {
+      if (errno==EINTR) continue;
       perror("poll");
       throw "poll";
       }
@@ -64,4 +76,11 @@ int main(int argc, char ** argv) try {
   } catch (const char * x) {
   tcsetattr(0,TCSANOW,&oldterm);
   cout << "\r" << x << endl;
+  }
+void window_size(int signal) {
+  winsize wins={0,0};
+  ioctl(0,TIOCGWINSZ,&wins);
+  ostringstream xx;
+  xx << "\r~size " << wins.ws_col << " " << wins.ws_row << "~";
+  write(fd,xx.str().c_str(),xx.str().size());
   }
