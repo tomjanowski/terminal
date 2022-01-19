@@ -11,12 +11,18 @@
 #include <sys/ioctl.h>
 #include <sstream>
 #include <signal.h>
+#include <openssl/ssl.h>
+#include <string>
+#include <openssl/err.h>
 using namespace std;
 const int LEN=256*256;
 termios term,oldterm;
 void window_size(int);
 int fd;
+SSL *ssl;
 int main(int argc, char ** argv) try {
+  tcgetattr(0,&oldterm);
+  if (argc<4) throw string(argv[0])+" CA.pem cert.pem key.pem";
   signal(SIGWINCH,window_size);
   char buffer[LEN];
   int fd1=socket(AF_INET,SOCK_STREAM,0);
@@ -29,11 +35,28 @@ int main(int argc, char ** argv) try {
     perror("bind");
     throw "bind";
     }
+//
+  SSL_CTX *ctx=SSL_CTX_new(TLS_server_method());
+  if (!ctx) throw "NULL CTX returned";
+  if (!SSL_CTX_set_min_proto_version(ctx,TLS1_2_VERSION)) throw "SSL_CTX_set_min_proto_version";
+  if (SSL_CTX_load_verify_locations(ctx,argv[1],NULL)!=1) throw "SSL_CTX_load_verify_locations";
+  if (SSL_CTX_use_certificate_file(ctx,argv[2],SSL_FILETYPE_PEM)!=1) throw "SSL_CTX_use_certificate_file";
+  if (SSL_CTX_use_PrivateKey_file(ctx,argv[3],SSL_FILETYPE_PEM)!=1) throw "SSL_CTX_use_PrivateKey_file";
+  SSL_CTX_set_verify(ctx,SSL_VERIFY_PEER|SSL_VERIFY_FAIL_IF_NO_PEER_CERT,NULL);
+  SSL_CTX_set_verify_depth(ctx,0);
+  ssl=SSL_new(ctx);
+  if (ssl==NULL) throw "SSL_new";
+//
   listen(fd1,1);
   fd=accept(fd1,reinterpret_cast<sockaddr*>(&addr),&addr_len);
   if (fd<0) {
     perror("accept");
     throw "accept";
+    }
+  if (SSL_set_fd(ssl,fd)!=1) throw "SSL_set_fd";
+  if (SSL_accept(ssl)!=1) {
+    ERR_print_errors_fp(stdout);
+    throw "SSL_accept";
     }
   pollfd fds[2];
   fds[0].fd=0;
@@ -41,14 +64,13 @@ int main(int argc, char ** argv) try {
   fds[1].fd=fd;
   fds[1].events=POLLIN|POLLHUP|POLLERR;
   int rec=0;
-  tcgetattr(0,&oldterm);
   cfmakeraw(&term);
   tcsetattr(0,TCSANOW,&term);
   winsize wins={0,0};
   ioctl(0,TIOCGWINSZ,&wins);
   ostringstream xx;
   xx << "\r~size " << wins.ws_col << " " << wins.ws_row << "~" << endl;
-  write(fd,xx.str().c_str(),xx.str().size());
+  SSL_write(ssl,xx.str().c_str(),xx.str().size());
   for (;;) {
     if ((rec=poll(fds,2,-1))<0) {
       if (errno==EINTR) continue;
@@ -64,15 +86,27 @@ int main(int argc, char ** argv) try {
         throw "POLLERR";
         }
       if ((fds[i].revents&POLLIN)!=0) {
-        if ((rec=read(fds[i].fd,buffer,LEN))<=0) {
-          perror("recv");
-          throw "recv";
+        if (i) {
+          if ((rec=SSL_read(ssl,buffer,LEN))<=0) {
+            ERR_print_errors_fp(stdout);
+            throw "SSL_read";
+            }
+          write(fds[!i].fd,buffer,rec);
           }
-        write(fds[!i].fd,buffer,rec);
+        else {
+          if ((rec=read(fds[i].fd,buffer,LEN))<=0) {
+            perror("recv");
+            throw "recv";
+            }
+          SSL_write(ssl,buffer,rec);
+          }
         }
       }
     }
 //send(fd,"aaaa",4,0);
+  } catch (const string &x) {
+  tcsetattr(0,TCSANOW,&oldterm);
+  cout << "\r" << x << endl;
   } catch (const char * x) {
   tcsetattr(0,TCSANOW,&oldterm);
   cout << "\r" << x << endl;
@@ -82,5 +116,5 @@ void window_size(int signal) {
   ioctl(0,TIOCGWINSZ,&wins);
   ostringstream xx;
   xx << "\r~size " << wins.ws_col << " " << wins.ws_row << "~";
-  write(fd,xx.str().c_str(),xx.str().size());
+  SSL_write(ssl,xx.str().c_str(),xx.str().size());
   }

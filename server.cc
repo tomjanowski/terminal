@@ -12,6 +12,8 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <iomanip>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 using namespace std;
 const int LEN=256*256;
 int fd;
@@ -19,6 +21,8 @@ void process_command(char*,int);
 void print_hex(char *data, int len);
 int master;
 int main(int argc, char ** argv) try {
+  int ret;
+  if (argc<4) throw string(argv[0])+" CA.pem cert.pem key.pem";
   char recv_buffer[LEN];
   char send_buffer[LEN];
   char command_buffer[LEN];
@@ -31,6 +35,26 @@ int main(int argc, char ** argv) try {
     perror("connect");
     throw "connect";
     }
+
+//
+  SSL_CTX *ctx=SSL_CTX_new(TLS_client_method());
+  if (!ctx) throw "NULL CTX returned";
+  if (!SSL_CTX_set_min_proto_version(ctx,TLS1_2_VERSION)) throw "SSL_CTX_set_min_proto_version";
+  if (SSL_CTX_load_verify_locations(ctx,argv[1],NULL)!=1) throw "SSL_CTX_load_verify_locations";
+  if (SSL_CTX_use_certificate_file(ctx,argv[2],SSL_FILETYPE_PEM)!=1) throw "SSL_CTX_use_certificate_file";
+  if (SSL_CTX_use_PrivateKey_file(ctx,argv[3],SSL_FILETYPE_PEM)!=1) throw "SSL_CTX_use_PrivateKey_file";
+  SSL_CTX_set_verify(ctx,SSL_VERIFY_PEER|SSL_VERIFY_FAIL_IF_NO_PEER_CERT,NULL);
+  SSL_CTX_set_verify_depth(ctx,0);
+  SSL *ssl=SSL_new(ctx);
+  if (ssl==NULL) throw "SSL_new";
+  if (SSL_set_fd(ssl,fd)!=1) throw "SSL_set_fd";
+  if ((ret=SSL_connect(ssl))!=1) {
+    cerr << SSL_get_error(ssl,ret) << endl;
+    ERR_print_errors_fp(stdout);
+    throw "SSL_connect";
+    }
+//
+
   master=getpt();
   if (master<0) {
     perror("getpt");
@@ -75,9 +99,17 @@ int main(int argc, char ** argv) try {
         exit(0);
         }
       if ((fds[i].revents&POLLIN)!=0) {
-        if ((rec=read(fds[i].fd,recv_buffer,LEN))<=0) {
-          perror("recv");
-          throw "recv";
+        if (i) {
+          if ((rec=SSL_read(ssl,recv_buffer,LEN))<=0) {
+            ERR_print_errors_fp(stdout);
+            throw "SSL_read 1";
+            }
+          }
+        else {
+          if ((rec=read(fds[i].fd,recv_buffer,LEN))<=0) {
+            perror("recv");
+            throw "recv";
+            }
           }
         if (fds[i].fd==fd) { //look for commands
           int jj=0;
@@ -106,10 +138,18 @@ int main(int argc, char ** argv) try {
           for (int j=0;j<rec;++j) send_buffer[j]=recv_buffer[j];
           }
         if (rec>0) {
-          rec=write(fds[!i].fd,send_buffer,rec);
-          if (rec<0) {
-            perror("write");
-            throw "write";
+          if (i) {
+            rec=write(fds[!i].fd,send_buffer,rec);
+            if (rec<0) {
+              perror("write");
+              throw "write";
+              }
+            }
+          else {
+            rec=SSL_write(ssl,send_buffer,rec);
+            if (rec<0) {
+              throw "SSL_write";
+              }
             }
           }
 //      if (i==1) {
@@ -120,6 +160,9 @@ int main(int argc, char ** argv) try {
     }
 //send(fd,"aaaa",4,0);
   } catch (const char * x) {
+  cout << x << endl;
+  shutdown(fd,SHUT_RDWR);
+  } catch (const string &x) {
   cout << x << endl;
   shutdown(fd,SHUT_RDWR);
   }

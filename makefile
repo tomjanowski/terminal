@@ -1,5 +1,5 @@
 all: server client
 server: server.o
-	g++ -o $@ $<
+	g++ -o $@ $< -lssl -lcrypto
 client: client.o
-	g++ -o $@ $<
+	g++ -o $@ $< -lssl -lcrypto
