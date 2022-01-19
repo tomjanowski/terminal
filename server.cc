@@ -14,28 +14,30 @@
 #include <iomanip>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <sys/wait.h>
+#include <string.h>
 using namespace std;
-const int LEN=256*256;
-int fd;
+const int LEN=256*256, SLEEP=5;
+int fd=-1;
 void process_command(char*,int);
 void print_hex(char *data, int len);
-int master;
+int master=-1;
+int child=-1;
 int main(int argc, char ** argv) try {
   int ret;
   if (argc<4) throw string(argv[0])+" CA.pem cert.pem key.pem";
+  const int MAX_NAME=100;
+  unsigned char expected_common_name[MAX_NAME]={};
+  bool check_name=false;
+  if (argc>4) {
+    strncpy(reinterpret_cast<char*>(expected_common_name),argv[4],MAX_NAME);
+    check_name=true;
+    }
   char recv_buffer[LEN];
   char send_buffer[LEN];
   char command_buffer[LEN];
-  fd=socket(AF_INET,SOCK_STREAM,0);
-  sockaddr_in addr;
-  addr.sin_family=AF_INET;
-  addr.sin_port=htons(2345);
-  addr.sin_addr.s_addr=inet_addr("127.0.0.1");
-  if (connect(fd,reinterpret_cast<sockaddr*>(&addr),sizeof(addr))<0) {
-    perror("connect");
-    throw "connect";
-    }
-
+//
+// SSL:
 //
   SSL_CTX *ctx=SSL_CTX_new(TLS_client_method());
   if (!ctx) throw "NULL CTX returned";
@@ -47,32 +49,81 @@ int main(int argc, char ** argv) try {
   SSL_CTX_set_verify_depth(ctx,0);
   SSL *ssl=SSL_new(ctx);
   if (ssl==NULL) throw "SSL_new";
-  if (SSL_set_fd(ssl,fd)!=1) throw "SSL_set_fd";
+//
+  sockaddr_in addr;
+  addr.sin_family=AF_INET;
+  addr.sin_port=htons(2345);
+  addr.sin_addr.s_addr=inet_addr("127.0.0.1");
+  for (;;) {
+  int rec=0;
+  bool newline=false;
+  bool command=false;
+  int cmd_len=0;
+  winsize wins={30,100};
+  SSL_clear(ssl);
+  fd=socket(AF_INET,SOCK_STREAM,0);
+  if (connect(fd,reinterpret_cast<sockaddr*>(&addr),sizeof(addr))<0) {
+    perror("connect");
+    close(fd);
+    sleep(SLEEP);
+    continue;
+    }
+
+// SSL:
+//
+  if (SSL_set_fd(ssl,fd)!=1) {
+    cerr << "SSL_set_fd" << endl;
+    close(fd);
+    sleep(SLEEP);
+    continue;
+    }
   if ((ret=SSL_connect(ssl))!=1) {
     cerr << SSL_get_error(ssl,ret) << endl;
     ERR_print_errors_fp(stdout);
-    throw "SSL_connect";
+    cerr << "SSL_connect" << endl;
+    goto cnt;
     }
+  if (SSL_get_verify_result(ssl)!=X509_V_OK) {
+    cerr << "SSL_get_verify_result" << endl;
+    goto cnt;
+    }
+  {
+  X509 *cert=SSL_get_peer_certificate(ssl);
+  if (!cert) {
+    cerr << "SSL_get_peer_certificate" << endl;
+    goto cnt;
+    }
+  X509_NAME *name=X509_get_subject_name(cert);
+  int i=X509_NAME_get_index_by_NID(name,NID_commonName,-1);
+  const unsigned char *common_name=ASN1_STRING_get0_data(X509_NAME_ENTRY_get_data(X509_NAME_get_entry(name,i)));
+  cout << "Peer common name: " << common_name << endl;
+  if (check_name && string(reinterpret_cast<const char*>(common_name))!=string(reinterpret_cast<const char*>(expected_common_name))) {
+    cerr << "names do not match" << endl;
+    goto cnt;
+    }
+  cout << "current cipher: " << SSL_CIPHER_standard_name(SSL_get_current_cipher(ssl)) << endl;
+  }
 //
 
   master=getpt();
   if (master<0) {
     perror("getpt");
-    throw "getpt";
+    goto cnt;
     }
   if (grantpt(master)<0) {
     perror("grantpt");
-    throw "grantpt";
+    goto cnt;
     }
   if (unlockpt(master)<0) {
     perror("unlockpt");
-    throw  "unlockpt";
+    goto cnt;
     }
-  int child=fork();
+  child=fork();
   if (child==0) {
     close(0);
     close(1);
     close(2);
+    close(fd);
     int fd=open(ptsname(master),O_RDWR);
     if (fd!=0) throw "open master";
     dup(fd);
@@ -85,30 +136,27 @@ int main(int argc, char ** argv) try {
   fds[0].events=POLLIN|POLLHUP|POLLERR;
   fds[1].fd=fd;
   fds[1].events=POLLIN|POLLHUP|POLLERR;
-  int rec=0;
-  winsize wins={30,100};
   ioctl(master,TIOCSWINSZ,&wins);
-  bool newline=false;
-  bool command=false;
-  int cmd_len=0;
   for (;;) {
     rec=poll(fds,2,-1);
     for (int i=0;i<2;++i) {
       if ((fds[i].revents&POLLHUP)!=0) {
         cout << "Received POLLHUP on " << i << endl;
-        exit(0);
+        goto cnt;
         }
       if ((fds[i].revents&POLLIN)!=0) {
         if (i) {
           if ((rec=SSL_read(ssl,recv_buffer,LEN))<=0) {
             ERR_print_errors_fp(stdout);
-            throw "SSL_read 1";
+            cerr << "SSL_read 1" << endl;
+            goto cnt;
             }
           }
         else {
           if ((rec=read(fds[i].fd,recv_buffer,LEN))<=0) {
             perror("recv");
-            throw "recv";
+            cerr << "Error recv" << endl;
+            goto cnt;
             }
           }
         if (fds[i].fd==fd) { //look for commands
@@ -142,22 +190,32 @@ int main(int argc, char ** argv) try {
             rec=write(fds[!i].fd,send_buffer,rec);
             if (rec<0) {
               perror("write");
-              throw "write";
+              cerr << "write" << endl;
+              goto cnt;
               }
             }
           else {
             rec=SSL_write(ssl,send_buffer,rec);
             if (rec<0) {
-              throw "SSL_write";
+              cerr << "SSL_write" << endl;
+              goto cnt;
               }
             }
           }
-//      if (i==1) {
-//        for (int j=0;j<rec;++j) cout << hex << (int)buffer[j] << " " << flush;
-//        }
         }
       }
     }
+cnt:
+  SSL_shutdown(ssl);
+  if (fd>0) close(fd);
+  fd=-1;
+  if (master>0) close(master);
+  master=-1;
+  if (child>0) waitpid(child,NULL,WNOHANG);
+  child=-1;
+  cout << "Sleeping..." << endl;
+  sleep(SLEEP);
+  } // for (;;)
 //send(fd,"aaaa",4,0);
   } catch (const char * x) {
   cout << x << endl;
