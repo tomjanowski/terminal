@@ -16,6 +16,7 @@
 #include <openssl/err.h>
 #include <sys/wait.h>
 #include <string.h>
+#include <signal.h>
 using namespace std;
 const int LEN=256*256, SLEEP=120;
 int fd=-1;
@@ -23,6 +24,7 @@ void process_command(char*,int);
 void print_hex(char *data, int len);
 int master=-1;
 int child=-1;
+void handle_child(int sig);
 int main(int argc, char ** argv) try {
   int ret;
   if (argc<6) throw string(argv[0])+" CA.pem cert.pem key.pem destIP destPORT [client name]";
@@ -36,6 +38,7 @@ int main(int argc, char ** argv) try {
   char recv_buffer[LEN];
   char send_buffer[LEN];
   char command_buffer[LEN];
+  signal(SIGCHLD,handle_child);
 //
 // SSL:
 //
@@ -264,3 +267,9 @@ void print_hex(char *data, int len) {
   cout << dec << setfill(' ') << endl;
   cout << "--" << endl;
 }
+void handle_child(int sig) {
+  int wstatus;
+  if (waitpid(-1,&wstatus,WNOHANG)>0) {
+    cout << "Process returned with status " << wstatus << endl;
+    }
+  }
