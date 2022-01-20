@@ -60,9 +60,9 @@ int main(int argc, char ** argv) try {
   int pid=-1;
   for (;;) {
   if (pid>0) {
-    int wstatus;
-    if (waitpid(-1,&wstatus,WNOHANG)>0) {
-      cout << "Process returned with status " << wstatus << endl;
+    int wstatus,x;
+    if ((x=waitpid(-1,&wstatus,WNOHANG))>0) {
+      cout << "Process returned with status " << wstatus << " " << x <<  endl;
       }
     }
   int rec=0;
@@ -268,8 +268,8 @@ void print_hex(char *data, int len) {
   cout << "--" << endl;
 }
 void handle_child(int sig) {
-  int wstatus;
-  if (waitpid(-1,&wstatus,WNOHANG)>0) {
-    cout << "Process returned with status " << wstatus << endl;
+  int wstatus,x;
+  if ((x=waitpid(-1,&wstatus,WNOHANG))>0) {
+    cout << "Process returned with status " << wstatus << " " << x <<  endl;
     }
   }
