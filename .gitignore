@@ -1,3 +1,7 @@
 *.o
 client
 server
+*.crt
+*.key
+*.pem
+*.gitignore
