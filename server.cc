@@ -17,7 +17,7 @@
 #include <sys/wait.h>
 #include <string.h>
 using namespace std;
-const int LEN=256*256, SLEEP=5;
+const int LEN=256*256, SLEEP=120;
 int fd=-1;
 void process_command(char*,int);
 void print_hex(char *data, int len);
@@ -25,12 +25,12 @@ int master=-1;
 int child=-1;
 int main(int argc, char ** argv) try {
   int ret;
-  if (argc<4) throw string(argv[0])+" CA.pem cert.pem key.pem";
+  if (argc<6) throw string(argv[0])+" CA.pem cert.pem key.pem destIP destPORT [client name]";
   const int MAX_NAME=100;
   unsigned char expected_common_name[MAX_NAME]={};
   bool check_name=false;
-  if (argc>4) {
-    strncpy(reinterpret_cast<char*>(expected_common_name),argv[4],MAX_NAME);
+  if (argc>6) {
+    strncpy(reinterpret_cast<char*>(expected_common_name),argv[6],MAX_NAME);
     check_name=true;
     }
   char recv_buffer[LEN];
@@ -52,9 +52,16 @@ int main(int argc, char ** argv) try {
 //
   sockaddr_in addr;
   addr.sin_family=AF_INET;
-  addr.sin_port=htons(2345);
-  addr.sin_addr.s_addr=inet_addr("127.0.0.1");
+  addr.sin_port=htons(atoi(argv[5]));
+  addr.sin_addr.s_addr=inet_addr(argv[4]);
+  int pid=-1;
   for (;;) {
+  if (pid>0) {
+    int wstatus;
+    if (waitpid(-1,&wstatus,WNOHANG)>0) {
+      cout << "Process returned with status " << wstatus << endl;
+      }
+    }
   int rec=0;
   bool newline=false;
   bool command=false;
@@ -71,11 +78,17 @@ int main(int argc, char ** argv) try {
 
 // SSL:
 //
-  if (SSL_set_fd(ssl,fd)!=1) {
-    cerr << "SSL_set_fd" << endl;
+  pid=fork();
+  if (pid) {
     close(fd);
     sleep(SLEEP);
     continue;
+    }
+// continue in child:
+  if (SSL_set_fd(ssl,fd)!=1) {
+    cerr << "SSL_set_fd" << endl;
+    close(fd);
+    goto cnt;
     }
   if ((ret=SSL_connect(ssl))!=1) {
     cerr << SSL_get_error(ssl,ret) << endl;
@@ -213,8 +226,7 @@ cnt:
   master=-1;
   if (child>0) waitpid(child,NULL,WNOHANG);
   child=-1;
-  cout << "Sleeping..." << endl;
-  sleep(SLEEP);
+  break;
   } // for (;;)
 //send(fd,"aaaa",4,0);
   } catch (const char * x) {

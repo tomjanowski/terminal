@@ -15,6 +15,7 @@
 #include <string>
 #include <string.h>
 #include <openssl/err.h>
+#include "dh2048.h"
 using namespace std;
 const int LEN=256*256;
 termios term,oldterm;
@@ -23,21 +24,23 @@ int fd;
 SSL *ssl;
 int main(int argc, char ** argv) try {
   tcgetattr(0,&oldterm);
-  if (argc<4) throw string(argv[0])+" CA.pem cert.pem key.pem [peer_common_name]";
+  if (argc<6) throw string(argv[0])+" CA.pem cert.pem key.pem bindIP bindPORT [peer_common_name]";
   const int MAX_NAME=100;
   unsigned char expected_common_name[MAX_NAME]={};
   bool check_name=false;
-  if (argc>4) {
-    strncpy(reinterpret_cast<char*>(expected_common_name),argv[4],MAX_NAME);
+  if (argc>6) {
+    strncpy(reinterpret_cast<char*>(expected_common_name),argv[6],MAX_NAME);
     check_name=true;
     }
   signal(SIGWINCH,window_size);
   char buffer[LEN];
   int fd1=socket(AF_INET,SOCK_STREAM,0);
+  int yes=1;
+  setsockopt(fd1,SOL_SOCKET,SO_REUSEADDR,&yes,sizeof(yes));
   sockaddr_in addr;
   addr.sin_family=AF_INET;
-  addr.sin_port=htons(2345);
-  addr.sin_addr.s_addr=inet_addr("127.0.0.1");
+  addr.sin_port=htons(atoi(argv[5]));
+  addr.sin_addr.s_addr=inet_addr(argv[4]);
   socklen_t addr_len=sizeof(addr);
   if (bind(fd1,reinterpret_cast<sockaddr*>(&addr),sizeof(addr))<0) {
     perror("bind");
@@ -46,6 +49,9 @@ int main(int argc, char ** argv) try {
 //
   SSL_CTX *ctx=SSL_CTX_new(TLS_server_method());
   if (!ctx) throw "NULL CTX returned";
+  DH *dh = get_dh2048();
+  if (1 != SSL_CTX_set_tmp_dh (ctx, dh)) ERR_print_errors_fp(stdout);
+  DH_free (dh);
   if (!SSL_CTX_set_min_proto_version(ctx,TLS1_2_VERSION)) throw "SSL_CTX_set_min_proto_version";
   if (SSL_CTX_load_verify_locations(ctx,argv[1],NULL)!=1) throw "SSL_CTX_load_verify_locations";
   if (SSL_CTX_use_certificate_file(ctx,argv[2],SSL_FILETYPE_PEM)!=1) throw "SSL_CTX_use_certificate_file";
@@ -54,6 +60,7 @@ int main(int argc, char ** argv) try {
   SSL_CTX_set_verify_depth(ctx,0);
   ssl=SSL_new(ctx);
   if (ssl==NULL) throw "SSL_new";
+//SSL_set_tmp_dh_callback(ssl,fun);
 //
   listen(fd1,1);
   fd=accept(fd1,reinterpret_cast<sockaddr*>(&addr),&addr_len);
@@ -61,6 +68,7 @@ int main(int argc, char ** argv) try {
     perror("accept");
     throw "accept";
     }
+  close(fd1);
   if (SSL_set_fd(ssl,fd)!=1) throw "SSL_set_fd";
   if (SSL_accept(ssl)!=1) {
     ERR_print_errors_fp(stdout);
@@ -78,7 +86,8 @@ int main(int argc, char ** argv) try {
   if (check_name && string(reinterpret_cast<const char*>(common_name))!=string(reinterpret_cast<const char*>(expected_common_name))) {
     throw "names do not match";
     }
-  cout << "current cipher: " << SSL_CIPHER_standard_name(SSL_get_current_cipher(ssl)) << endl;
+//cout << "current cipher: " << SSL_CIPHER_standard_name(SSL_get_current_cipher(ssl)) << endl;
+  cout << "current cipher: " << SSL_CIPHER_description(SSL_get_current_cipher(ssl),NULL,0) << endl;
   pollfd fds[2];
   fds[0].fd=0;
   fds[0].events=POLLIN|POLLHUP|POLLERR;
