@@ -1,4 +1,4 @@
-# Inverted server-client openssl terminal
+# _Inverted_ server-client openssl terminal
 
 This work in progress is an experiment on openssl programming, while
 implementing inverted client-server pair for remote terminal connection.
@@ -13,4 +13,5 @@ proceeding. It is also required to specify IP addresses and TCP ports
 that will be used for communication.
 
 The purpose of this project is to enable access to computers
-behind a firewall or working in a internal (private) network.
+behind a firewall, or computers that are running on an internal
+(private) network with a SNAT router.
