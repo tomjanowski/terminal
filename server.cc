@@ -91,11 +91,11 @@ int main(int argc, char ** argv) try {
   fd=socket(AF_INET,SOCK_STREAM,0);
   int yes=1;
   int idle=600;
-  if (!setsockopt(fd,SOL_SOCKET,SO_KEEPALIVE,&yes,sizeof(yes))) {
+  if (setsockopt(fd,SOL_SOCKET,SO_KEEPALIVE,&yes,sizeof(yes))) {
     perror("setsockopt SO_KEEPALIVE");
     goto cnt;
     }
-  if (!setsockopt(fd,SOL_SOCKET,TCP_KEEPIDLE,&idle,sizeof(idle))) {
+  if (setsockopt(fd,SOL_SOCKET,TCP_KEEPIDLE,&idle,sizeof(idle))) {
     perror("setsockopt TCP_KEEPIDLE");
     goto cnt;
     }
