@@ -84,7 +84,10 @@ int main(int argc, char ** argv) try {
     unsigned int sl=random%SLEEP;
     if (sl<10) sl=10;
     cout << "Sleep time " << sl << endl;
-    sleep(sl);
+    while (sl) {
+      sl=sleep(sl);
+      if (sl) cout << "remain... " << sl << endl;
+    }
     continue;
     }
 // continue in child:
@@ -95,12 +98,12 @@ int main(int argc, char ** argv) try {
     perror("setsockopt SO_KEEPALIVE");
     goto cnt;
     }
-  if (setsockopt(fd,SOL_SOCKET,TCP_KEEPIDLE,&idle,sizeof(idle))) {
-    perror("setsockopt TCP_KEEPIDLE");
-    goto cnt;
-    }
   if (connect(fd,reinterpret_cast<sockaddr*>(&addr),sizeof(addr))<0) {
     perror("connect");
+    goto cnt;
+    }
+  if (setsockopt(fd,SOL_SOCKET,TCP_KEEPIDLE,&idle,sizeof(idle))) {
+    perror("setsockopt TCP_KEEPIDLE");
     goto cnt;
     }
 
