@@ -102,7 +102,7 @@ int main(int argc, char ** argv) try {
     perror("connect");
     goto cnt;
     }
-  if (setsockopt(fd,SOL_SOCKET,TCP_KEEPIDLE,&idle,sizeof(idle))) {
+  if (setsockopt(fd,IPPROTO_TCP,TCP_KEEPIDLE,&idle,sizeof(idle))) {
     perror("setsockopt TCP_KEEPIDLE");
     goto cnt;
     }
