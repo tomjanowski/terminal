@@ -149,15 +149,23 @@ int main(int argc, char ** argv) try {
     }
   pollfd fds[2];
   fds[0].fd=master;
-  fds[0].events=POLLIN|POLLHUP|POLLERR;
+  fds[0].events=POLLIN|POLLHUP|POLLERR|POLLRDHUP;
   fds[1].fd=fd;
-  fds[1].events=POLLIN|POLLHUP|POLLERR;
+  fds[1].events=POLLIN|POLLHUP|POLLERR|POLLRDHUP;
   ioctl(master,TIOCSWINSZ,&wins);
   for (;;) {
     rec=poll(fds,2,-1);
     for (int i=0;i<2;++i) {
       if ((fds[i].revents&POLLHUP)!=0) {
         cout << "Received POLLHUP on " << i << endl;
+        goto cnt;
+        }
+      if ((fds[i].revents&POLLERR)!=0) {
+        cout << "Received POLLERR on " << i << endl;
+        goto cnt;
+        }
+      if ((fds[i].revents&POLLRDHUP)!=0) {
+        cout << "Received POLLRDHUP on " << i << endl;
         goto cnt;
         }
       if ((fds[i].revents&POLLIN)!=0) {
