@@ -222,6 +222,9 @@ int main(int argc, char ** argv) try {
               }
             if (recv_buffer[j]=='\r') newline=true;
             else                      newline=false;
+            if (cmd_len>=LEN) {
+              throw "command buffer overflow, hostile peer";
+              }
             if (command && recv_buffer[j]!='~') command_buffer[cmd_len++]=recv_buffer[j];
             if (!command && !skip) send_buffer[jj++]=recv_buffer[j];
             }
