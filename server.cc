@@ -1,9 +1,9 @@
 #include <iostream>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/ip.h>
+#include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <poll.h>
 #include <unistd.h>
@@ -58,6 +58,11 @@ int main(int argc, char ** argv) try {
   addr.sin_port=htons(atoi(argv[5]));
   addr.sin_addr.s_addr=inet_addr(argv[4]);
   int pid=-1;
+  int rnd;
+  if ((rnd=open("/dev/urandom",O_RDONLY))<0) {
+    perror("open");
+    throw "open";
+    }
   for (;;) {
   if (pid>0) {
     int wstatus,x;
@@ -70,24 +75,37 @@ int main(int argc, char ** argv) try {
   bool command=false;
   int cmd_len=0;
   winsize wins={30,100};
-  SSL_clear(ssl);
+//SSL_clear(ssl);
+  pid=fork();
+  if (pid) {
+//  close(fd);
+    unsigned int random=SLEEP;
+    read(rnd,&random,sizeof(random));
+    unsigned int sl=random%SLEEP;
+    if (sl<10) sl=10;
+    cout << "Sleep time " << sl << endl;
+    sleep(sl);
+    continue;
+    }
+// continue in child:
   fd=socket(AF_INET,SOCK_STREAM,0);
+  int yes=1;
+  int idle=600;
+  if (!setsockopt(fd,SOL_SOCKET,SO_KEEPALIVE,&yes,sizeof(yes))) {
+    perror("setsockopt SO_KEEPALIVE");
+    goto cnt;
+    }
+  if (!setsockopt(fd,SOL_SOCKET,TCP_KEEPIDLE,&idle,sizeof(idle))) {
+    perror("setsockopt TCP_KEEPIDLE");
+    goto cnt;
+    }
   if (connect(fd,reinterpret_cast<sockaddr*>(&addr),sizeof(addr))<0) {
     perror("connect");
-    close(fd);
-    sleep(SLEEP);
-    continue;
+    goto cnt;
     }
 
 // SSL:
 //
-  pid=fork();
-  if (pid) {
-    close(fd);
-    sleep(SLEEP);
-    continue;
-    }
-// continue in child:
   if (SSL_set_fd(ssl,fd)!=1) {
     cerr << "SSL_set_fd" << endl;
     close(fd);
