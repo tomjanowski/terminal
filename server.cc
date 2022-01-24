@@ -229,6 +229,7 @@ int main(int argc, char ** argv) try {
               shell_started=true;
               child=fork();
               if (child==0) {
+                cout << "Starting shell.." << endl;
                 close(0);
                 close(1);
                 close(2);
