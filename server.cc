@@ -91,6 +91,7 @@ int main(int argc, char ** argv) try {
     continue;
     }
 // continue in child:
+  bool shell_started=false;
   fd=socket(AF_INET,SOCK_STREAM,0);
   int yes=1;
   int idle=600;
@@ -155,20 +156,7 @@ int main(int argc, char ** argv) try {
     perror("unlockpt");
     goto cnt;
     }
-  child=fork();
-  if (child==0) {
-    close(0);
-    close(1);
-    close(2);
-    close(fd);
-    int fd=open(ptsname(master),O_RDWR);
-    if (fd!=0) throw "open master";
-    dup(fd);
-    dup(fd);
-    setsid();
-    signal(SIGPIPE,SIG_DFL);
-    execl("/bin/bash","-bash",NULL);
-    }
+// shell was started here
   pollfd fds[2];
   fds[0].fd=master;
   fds[0].events=POLLIN|POLLHUP|POLLERR|POLLRDHUP;
@@ -236,6 +224,23 @@ int main(int argc, char ** argv) try {
           }
         if (rec>0) {
           if (i) {
+            if (!shell_started) {
+              shell_started=true;
+              child=fork();
+              if (child==0) {
+                close(0);
+                close(1);
+                close(2);
+                close(fd);
+                int fd=open(ptsname(master),O_RDWR);
+                if (fd!=0) throw "open master";
+                dup(fd);
+                dup(fd);
+                setsid();
+                signal(SIGPIPE,SIG_DFL);
+                execl("/bin/bash","-bash",NULL);
+                }
+              }
             rec=write(fds[!i].fd,send_buffer,rec);
             if (rec<0) {
               perror("write");
@@ -277,12 +282,18 @@ void process_command(char* command,int len) {
   if (len>=LEN) throw "len error";
   command[len]=0;
   unsigned short a,b;
-  char cmd[len];
-  int ret=sscanf(command,"%s%hd%hd",cmd,&a,&b);
+  char cmd[len],par1[len],par2[len];
+  int ret;
+  ret=sscanf(command,"%s%hd%hd",cmd,&a,&b);
   if (string(cmd)=="size" && ret==3) {
     winsize wins={b,a};
     ioctl(master,TIOCSWINSZ,&wins);
     cout << "\nsize: " << a << "x" << b << endl;
+    }
+  ret=sscanf(command,"%s%s%s",cmd,par1,par2);
+  if (string(cmd)=="env" && ret==3) {
+    setenv(par1,par2,1);
+    cout << "\nenv: " << par1 << "=" << par2 << endl;
     }
   }
 void print_hex(char *data, int len) {

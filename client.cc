@@ -15,6 +15,7 @@
 #include <string>
 #include <string.h>
 #include <openssl/err.h>
+#include <stdlib.h>
 #include "dh2048.h"
 using namespace std;
 const int LEN=256*256;
@@ -101,6 +102,12 @@ int main(int argc, char ** argv) try {
   ostringstream xx;
   xx << "\r~size " << wins.ws_col << " " << wins.ws_row << "~" << endl;
   SSL_write(ssl,xx.str().c_str(),xx.str().size());
+  char *TERM=getenv("TERM");
+  if (TERM!=NULL) {
+    xx.str("");
+    xx << "\r~env " << "TERM" << " " << TERM << "~" << endl;
+    SSL_write(ssl,xx.str().c_str(),xx.str().size());
+    }
   for (;;) {
     if ((rec=poll(fds,2,-1))<0) {
       if (errno==EINTR) continue;
