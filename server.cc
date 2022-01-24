@@ -17,6 +17,7 @@
 #include <sys/wait.h>
 #include <string.h>
 #include <signal.h>
+#include <stdlib.h>
 using namespace std;
 const int LEN=256*256, SLEEP=120;
 int fd=-1;
@@ -292,7 +293,9 @@ void process_command(char* command,int len) {
     }
   ret=sscanf(command,"%s%s%s",cmd,par1,par2);
   if (string(cmd)=="env" && ret==3) {
-    setenv(par1,par2,1);
+    if (setenv(par1,par2,1)<0) {
+      perror("setenv");
+      }
     cout << "\nenv: " << par1 << "=" << par2 << endl;
     }
   }
