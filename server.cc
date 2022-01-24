@@ -166,6 +166,7 @@ int main(int argc, char ** argv) try {
     dup(fd);
     dup(fd);
     setsid();
+    signal(SIGPIPE,SIG_DFL);
     execl("/bin/bash","-bash",NULL);
     }
   pollfd fds[2];
