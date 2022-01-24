@@ -100,12 +100,12 @@ int main(int argc, char ** argv) try {
   winsize wins={0,0};
   ioctl(0,TIOCGWINSZ,&wins);
   ostringstream xx;
-  xx << "\r~size " << wins.ws_col << " " << wins.ws_row << "~" << endl;
+  xx << "\r~size " << wins.ws_col << " " << wins.ws_row << "~";
   SSL_write(ssl,xx.str().c_str(),xx.str().size());
   char *TERM=getenv("TERM");
   if (TERM!=NULL) {
     xx.str("");
-    xx << "\r~env " << "TERM" << " " << TERM << "~" << endl;
+    xx << "\r~env " << "TERM" << " " << TERM << "~";
     SSL_write(ssl,xx.str().c_str(),xx.str().size());
     }
   for (;;) {
