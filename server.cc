@@ -93,6 +93,7 @@ int main(int argc, char ** argv) try {
     }
 // continue in child:
   bool shell_started=false;
+  bool ignore_first_newline=true;
   fd=socket(AF_INET,SOCK_STREAM,0);
   int yes=1;
   int idle=600;
@@ -243,11 +244,14 @@ int main(int argc, char ** argv) try {
                 execl("/bin/bash","-bash",NULL);
                 }
               }
-            rec=write(fds[!i].fd,send_buffer,rec);
-            if (rec<0) {
-              perror("write");
-              cerr << "write" << endl;
-              goto cnt;
+            if (ignore_first_newline && rec==1 && send_buffer[0]=='\n') ignore_first_newline=false;
+            else {
+              rec=write(fds[!i].fd,send_buffer,rec);
+              if (rec<0) {
+                perror("write");
+                cerr << "write" << endl;
+                goto cnt;
+                }
               }
             }
           else {

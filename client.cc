@@ -105,7 +105,7 @@ int main(int argc, char ** argv) try {
   char *TERM=getenv("TERM");
   if (TERM!=NULL) {
     xx.str("");
-    xx << "\r~env " << "TERM" << " " << TERM << "~";
+    xx << "\r~env " << "TERM" << " " << TERM << "~" << endl;
     SSL_write(ssl,xx.str().c_str(),xx.str().size());
     }
   for (;;) {
