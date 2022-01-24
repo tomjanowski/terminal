@@ -18,7 +18,7 @@ client, i.e. it is the _interactive_ end of the session, where a
 person types stuff on their terminal, while the server acts as an sshd
 server, where it creates a pseudoterminal with a /bin/bash in an
 interactive mode. The server does not use any PAM modules, it simply
-creates an new subprocess for handling the interactive session.
+creates a new subprocess for handling the interactive session.
 
 The purpose of this project is to enable access to computers
 behind a firewall, or computers that are running on an internal
@@ -33,6 +33,11 @@ freezing
 4. Hopefully a hung session would result in closing the slave end of
 the connection and closing the master-serving subprocess, but this is
 yet to be seen.
+5. Exporting env variables is implemented, by default only TERM is being sent
+to the server side.
 
 TODO:
-1. Exporting env variables, in particular XTERM.
+
+1. Maybe adding configuration files defining which commands should be sent
+over to the server, by default, this cound contain e.g. a list of env. variables to be
+exported.
